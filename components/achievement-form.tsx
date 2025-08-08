@@ -13,10 +13,15 @@ import { toast } from 'sonner'
 
 interface AchievementData {
   title: string
+  description: string
   type: string
   date: string
-  technologies: string[]
   role: string
+  technologies: string[]
+  proofLink: string
+  participantName: string
+  imageUrl: string
+  walletAddress: string
   comment: string
 }
 
@@ -49,25 +54,34 @@ const mockAIResponses = {
 export function AchievementForm() {
   const [formData, setFormData] = useState<AchievementData>({
     title: '',
+    description: '',
     type: '',
     date: '',
-    technologies: [],
     role: '',
+    technologies: [],
+    proofLink: '',
+    participantName: '',
+    imageUrl: '',
+    walletAddress: '',
     comment: ''
   })
   
   const [techInput, setTechInput] = useState('')
+  const [imagePreview, setImagePreview] = useState('')
   const [generatedDescription, setGeneratedDescription] = useState('')
   const [selectedStyle, setSelectedStyle] = useState('professional')
   const [isGenerating, setIsGenerating] = useState(false)
   const [isMinting, setIsMinting] = useState(false)
   const [step, setStep] = useState<'form' | 'description'>('form')
 
-  const addTechnology = () => {
-    if (techInput.trim() && !formData.technologies.includes(techInput.trim())) {
+  const addTechnology = (e: React.KeyboardEvent<HTMLInputElement> | null = null) => {
+    if (e && e.key !== 'Enter' && e.key !== ',') return
+    
+    const techToAdd = techInput.trim()
+    if (techToAdd && !formData.technologies.includes(techToAdd)) {
       setFormData(prev => ({
         ...prev,
-        technologies: [...prev.technologies, techInput.trim()]
+        technologies: [...prev.technologies, techToAdd]
       }))
       setTechInput('')
     }
@@ -110,6 +124,17 @@ export function AchievementForm() {
   }
 
   const mintNFT = async () => {
+    // Validate required fields
+    if (!formData.walletAddress || !formData.walletAddress.startsWith('0x')) {
+      toast.error('Please enter a valid wallet address')
+      return
+    }
+    
+    if (!formData.participantName) {
+      toast.error('Please enter participant name')
+      return
+    }
+    
     setIsMinting(true)
     
     // Simulate minting process
@@ -121,18 +146,23 @@ export function AchievementForm() {
       const achievement = {
         tokenId,
         name: formData.title,
-        description: generatedDescription,
+        description: formData.description || generatedDescription,
+        image: formData.imageUrl,
+        external_url: formData.proofLink,
         attributes: [
           { trait_type: "Type", value: formData.type },
           { trait_type: "Role", value: formData.role },
+          { trait_type: "Participant", value: formData.participantName },
           { trait_type: "Technologies", value: formData.technologies.join(", ") },
-          { trait_type: "Date", value: new Date(formData.date).toLocaleDateString('en-US', { 
+          { trait_type: "Date", value: new Date(formData.date).toLocaleDateString('es-MX', { 
             year: 'numeric', 
-            month: 'long' 
+            month: 'long',
+            day: 'numeric'
           }) }
         ],
         transactionHash: txHash,
-        mintedAt: new Date().toISOString()
+        mintedAt: new Date().toISOString(),
+        recipient: formData.walletAddress
       }
       
       const existing = JSON.parse(localStorage.getItem('achievements') || '[]')
@@ -156,6 +186,25 @@ export function AchievementForm() {
     }, 3000)
   }
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) { // 2MB limit
+        toast.error('Image size should be less than 2MB')
+        return
+      }
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setFormData(prev => ({
+          ...prev,
+          imageUrl: reader.result as string
+        }))
+        setImagePreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
   if (step === 'form') {
     return (
       <Card className="max-w-2xl mx-auto">
@@ -164,46 +213,78 @@ export function AchievementForm() {
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-2">
-            <Label htmlFor="title">Achievement Title *</Label>
+            <Label htmlFor="title">Título del logro *</Label>
             <Input
               id="title"
               value={formData.title}
               onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-              placeholder="e.g., First Place in Web3 Hackathon"
+              placeholder="Ej. Participación en Hackathon BlockchainMX"
+              required
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="type">Type *</Label>
-            <Select value={formData.type} onValueChange={(value) => setFormData(prev => ({ ...prev, type: value }))}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select achievement type" />
-              </SelectTrigger>
-              <SelectContent>
-                {achievementTypes.map(type => (
-                  <SelectItem key={type} value={type}>{type}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="date">Date *</Label>
+            <Label htmlFor="participantName">Nombre del participante *</Label>
             <Input
-              id="date"
-              type="date"
-              value={formData.date}
-              onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
+              id="participantName"
+              value={formData.participantName}
+              onChange={(e) => setFormData(prev => ({ ...prev, participantName: e.target.value }))}
+              placeholder="Tu nombre completo"
+              required
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="role">Role Played *</Label>
+            <Label htmlFor="description">Descripción breve *</Label>
+            <Textarea
+              id="description"
+              value={formData.description}
+              onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+              placeholder="Máx. 300 caracteres explicando el contexto del logro"
+              maxLength={300}
+              rows={3}
+              required
+            />
+            <p className="text-sm text-muted-foreground text-right">
+              {formData.description.length}/300 caracteres
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="type">Tipo de logro *</Label>
+              <Select value={formData.type} onValueChange={(value) => setFormData(prev => ({ ...prev, type: value }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona un tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {achievementTypes.map(type => (
+                    <SelectItem key={type} value={type}>{type}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="date">Fecha del logro *</Label>
+              <Input
+                id="date"
+                type="date"
+                value={formData.date}
+                onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="role">Rol desempeñado *</Label>
             <Input
               id="role"
               value={formData.role}
               onChange={(e) => setFormData(prev => ({ ...prev, role: e.target.value }))}
-              placeholder="e.g., Frontend Developer, Team Lead, Solo Developer"
+              placeholder="Ej. Desarrollador Frontend, Diseñador UX"
+              required
             />
           </div>
 
@@ -214,7 +295,7 @@ export function AchievementForm() {
                 value={techInput}
                 onChange={(e) => setTechInput(e.target.value)}
                 placeholder="Add technology"
-                onKeyPress={(e) => e.key === 'Enter' && addTechnology()}
+                onKeyDown={(e) => e.key === 'Enter' && addTechnology()}
               />
               <Button onClick={addTechnology} variant="outline">Add</Button>
             </div>
@@ -225,6 +306,57 @@ export function AchievementForm() {
                 </Badge>
               ))}
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="proofLink">Enlace comprobatorio</Label>
+            <Input
+              id="proofLink"
+              type="url"
+              value={formData.proofLink}
+              onChange={(e) => setFormData(prev => ({ ...prev, proofLink: e.target.value }))}
+              placeholder="https://github.com/username/project"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="image">Foto o logo (opcional)</Label>
+            <div className="flex items-center gap-4">
+              <label className="cursor-pointer border rounded-md p-2 hover:bg-accent transition-colors">
+                <span className="text-sm">Subir imagen</span>
+                <input
+                  id="image"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleImageUpload}
+                />
+              </label>
+              {imagePreview && (
+                <div className="w-16 h-16 rounded-md overflow-hidden border">
+                  <img 
+                    src={imagePreview} 
+                    alt="Vista previa" 
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">Tamaño máximo: 2MB</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="walletAddress">Wallet address para recibir el NFT *</Label>
+            <Input
+              id="walletAddress"
+              value={formData.walletAddress}
+              onChange={(e) => setFormData(prev => ({ ...prev, walletAddress: e.target.value }))}
+              placeholder="0x..."
+              required
+            />
+            <p className="text-xs text-muted-foreground">
+              Esta es la dirección donde recibirás tu NFT de logro
+            </p>
           </div>
 
           <div className="space-y-2">
